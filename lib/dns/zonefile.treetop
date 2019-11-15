@@ -43,7 +43,7 @@ grammar Zonefile
   end
 
   rule soa
-    origin space ttl klass "SOA" space ns space rp space "("?  multiline_comment* space_or_break* serial multiline_comment* space_or_break refresh multiline_comment* space_or_break reretry multiline_comment* space_or_break expiry multiline_comment* space_or_break nxttl multiline_comment* space_or_break* ")"? {
+    origin space ttl klass "SOA" space ns space "("? space_or_break* rp space* "("?  comment? multiline_comment* space_or_break* serial multiline_comment* space_or_break refresh multiline_comment* space_or_break reretry multiline_comment* space_or_break expiry multiline_comment* space_or_break nxttl multiline_comment* space_or_break* ")"? {
       def to_s
         "#{origin} #{ttl} #{klass} SOA #{ns} #{rp} (#{serial} #{refresh} #{reretry} #{expiry} #{nxttl})"
       end
@@ -53,7 +53,7 @@ grammar Zonefile
   end
 
   rule resource_record
-    record:(a_record / aaaa_record / cname_record / mx_record / naptr_record / ns_record / ptr_record / srv_record / spf_record / sshfp_record / txt_record / soa_record) space* comment? linebreak {
+    record:(a_record / aaaa_record / cname_record / mx_record / naptr_record / ns_record / ptr_record / srv_record / spf_record / sshfp_record / txt_record / soa_record / dsf_record / policy_record) space* comment? linebreak {
       def zone
         p = parent
         while p.respond_to?(:parent) && p.parent
@@ -233,6 +233,32 @@ grammar Zonefile
       end
     }
   end
+
+  rule dsf_record
+      host space ms_age ttl klass "DSF" space "Service" space ns space "(" space_or_break* (integer space_or_break)*  ("@!" space integer space "@@" space integer space)? ")" {
+        def to_s
+          "#{host} #{ttl} #{klass} DSF "
+        end
+
+        def record_type
+          "DSF"
+        end
+      }
+    end
+
+  rule policy_record
+      host space ms_age ttl klass "POLICY" data {
+        def to_s
+          "#{host} #{ttl} #{klass} POLICY "
+        end
+
+        def record_type
+          "POLICY"
+        end
+      }
+    end
+
+
 
   rule sshfp_record
     host space ms_age ttl klass "SSHFP" space alg:integer space fptype:integer space fp:fingerprint {

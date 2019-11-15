@@ -452,6 +452,29 @@ ZONE
     end
   end
 
+  describe "parsing an SOA with for responsible party in the parentheses" do
+    before(:each) do
+      @zonefile =<<-ZONE
+@             IN  SOA  ns.domain.example.com. (
+              hostmaster.example.com.  ; responsible party 
+              2007120710 ; serial number of this zone file
+              1d         ; slave refresh (1 day)
+              1d         ; slave retry time in case of a problem (1 day)
+              4W         ; slave expiration time (4 weeks)
+              3600       ; minimum caching time in case of failed lookups (1 hour)
+              )
+      ZONE
+    end
+
+    it "should parse the SOA record correctly" do
+      zone = DNS::Zonefile.load(@zonefile)
+      soa = zone.soa
+      expect(soa.klass).to eql('IN')
+      expect(soa.nameserver).to eql('ns.domain.example.com.')
+      expect(soa.responsible_party).to eql('hostmaster.example.com.')
+    end
+  end
+
   describe "parsing an ORIGIN of ." do
     before do
       @zonefile =<<-ZONE
@@ -475,5 +498,130 @@ ZONE
       expect(a_record.host).to eq("example.com.")
     end
   end
+
+  describe "parsing multiple ORIGIN directives" do
+    before do
+      @zonefile =<<-ZONE
+$ORIGIN example.com.
+@             IN  SOA  ns.example.com. hostmaster.example.com. (
+              2007120710 ; serial number of this zone file
+              1d         ; refresh (1 day)
+              1d         ; retry time in case of a problem (1 day)
+              4W         ; expiration time (4 weeks)
+              3600       ; minimum caching time in case of failed lookups (1 hour)
+              )
+
+              A     10.1.0.1
+$ORIGIN sub1.example.com.                  ; subndomain only
+              A     10.1.0.2
+@             A     10.1.1.1
+
+
+$ORIGIN sub2.example.com.      ; full domain name specified 
+@             CNAME test.nowehere.com
+              A     10.1.2.1
+
+$ORIGIN sub3.example.test.     ; domain outside the SOA record - is this according to the RFC's ??
+@              A     10.1.3.1
+
+      ZONE
+    end
+
+    it "should parse the zone correctly" do
+      zone = DNS::Zonefile.load(@zonefile)
+      a_records = zone.records_of(DNS::Zonefile::A)
+      expect(a_records.size).to eq(5)
+      expect(a_records.detect { |a|
+        a.host == "example.com." && a.address == "10.1.0.1"
+      }).to_not be_nil
+      expect(a_records.detect { |a|
+        a.host == "example.com." && a.address == "10.1.0.2"
+      }).to_not be_nil
+      expect(a_records.detect { |a|
+        a.host == "sub1.example.com." && a.address == "10.1.1.1"
+      }).to_not be_nil
+      expect(a_records.detect { |a|
+        a.host == "sub2.example.com." && a.address == "10.1.2.1"
+      }).to_not be_nil
+      expect(a_records.detect { |a|
+        a.host == "sub3.example.test." && a.address == "10.1.3.1"
+      }).to_not be_nil
+
+    end
+  end
+
+  describe "parsing a zone string originating from dyn.com" do
+    before(:each) do
+      @zonefile =<<-ZONE
+$ORIGIN example.com.
+@             IN  SOA ns.example.com. hostmaster\\.awesome.example.com. 2007120710 1d  1d 4w 3600
+; That's the SOA part done.
+
+@             NS    ns                    ; ns.example.com is the nameserver for example.com
+              NS    ns.somewhere.com.     ; ns.somewhere.com is a backup nameserver for example.com
+              A     10.0.0.1              ; ip address for "example.com". next line has spaces after the IP, but no actual comment.
+@             A     10.0.0.11
+www           CNAME ns                    ; "www.example.com" is an alias for "ns.example.com"
+example.com.  MX    10 mail.example.com.  ; mail.example.com is the mailserver for example.com
+@             MX    20 mail2.example.com. ; Similar to above line, but using "@" to say "use $ORIGIN"
+@             MX    50 mail3              ; Similar to above line, but using a host within this domain
+
+@             AAAA  2001:db8:a::1         ; IPv6, lowercase
+
+$ORIGIN test.example.com.
+$TTL 3600; expire in 1 day.
+@             A     10.1.0.1              ; Test with alternate origin
+              MX    10  mail.example.com.
+www           A     10.1.0.2              ; www.test.example.com.
+
+svc-glb    30 DSF Service dy--g18028.svc-glb.example.com. (
+               11 0000  13 0001  @! 0002  @@ 0002 )
+
+glb       300 DSF Service dy--g16954.glb.example.com. (
+                @! 0000  @@ 0000 )
+
+svc        30 DSF Service dy--g18248.svc.glb.example.com. (
+               11 0000  12 0000  13 0001  14 0001  15 0000
+               17 0000  @! 0002  @@ 0002 )
+
+dyn-steer  30 POLICY "dyn-steer.example.com" A "https://policymaster.nowhere.com:1111/dyn_steer/policies/bla-bla" "https://dns.nowhere.net/dyn-steer/policies/dyn-steer-bla-bla" AAAKAS/pysiZdz8ES
+
+      ZONE
+    end
+
+    it "should build the correct number of resource records" do
+      zone = DNS::Zonefile.parse(@zonefile)
+      expect(zone.rr.size).to eq(16)
+    end
+
+    it "should build the correct NS records" do
+      zone = DNS::Zonefile.load(@zonefile)
+      ns_records = zone.records_of DNS::Zonefile::NS
+      expect(ns_records.size).to eq(2)
+
+#      expect(ns_records.detect { |ns|
+#        ns.host == "example.com." && ns.nameserver == "ns.example.com."
+#      }).to_not be_nil
+
+#      expect(ns_records.detect { |ns|
+#        ns.host == "example.com." && ns.nameserver == "ns.somewhere.com." && ns.ttl == 86400
+#      }).to_not be_nil
+    end
+
+    it "should build the correct A records" do
+      zone = DNS::Zonefile.load(@zonefile)
+      a_records = zone.records_of DNS::Zonefile::A
+      expect(a_records.size).to eq(4)
+
+      expect(a_records.detect { |a|
+        a.host == "example.com." && a.address == "10.0.0.1"
+      }).to_not be_nil
+
+      expect(a_records.detect { |a|
+        a.host == "example.com." && a.address == "10.0.0.11"
+      }).to_not be_nil
+    end
+  end
+
 
 end
