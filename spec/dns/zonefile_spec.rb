@@ -599,13 +599,15 @@ dyn-steer  30 POLICY "dyn-steer.example.com" A "https://policymaster.nowhere.com
       ns_records = zone.records_of DNS::Zonefile::NS
       expect(ns_records.size).to eq(2)
 
-#      expect(ns_records.detect { |ns|
-#        ns.host == "example.com." && ns.nameserver == "ns.example.com."
-#      }).to_not be_nil
+      p ns_records
 
-#      expect(ns_records.detect { |ns|
-#        ns.host == "example.com." && ns.nameserver == "ns.somewhere.com." && ns.ttl == 86400
-#      }).to_not be_nil
+      expect(ns_records.detect { |ns|
+        ns.host == "example.com." && ns.nameserver == "ns.example.com."
+      }).to_not be_nil
+
+      expect(ns_records.detect { |ns|
+        ns.host == "example.com." && ns.nameserver == "ns.somewhere.com." # && ns.ttl == 86400
+      }).to_not be_nil
     end
 
     it "should build the correct A records" do
@@ -620,6 +622,13 @@ dyn-steer  30 POLICY "dyn-steer.example.com" A "https://policymaster.nowhere.com
       expect(a_records.detect { |a|
         a.host == "example.com." && a.address == "10.0.0.11"
       }).to_not be_nil
+      expect(a_records.detect { |a|
+        a.host == "www.test.example.com." && a.address == "10.1.0.2"
+      }).to_not be_nil
+      expect(a_records.detect { |a|
+        a.host == "www.example.com." && a.address == "10.1.0.2"
+      }).to be_nil
+
     end
   end
 
